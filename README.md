@@ -9,15 +9,19 @@ An intelligent research and data analysis platform powered by AI. AutoAnalyst AI
 From the project root directory, run:
 
 ```bash
-./start_server.sh
-```
+# Set your GROQ API key
+export GROQ_API_KEY=your_groq_api_key_here
 
-Or manually:
-
-```bash
+# Start the backend server
 cd backend
 export TOKENIZERS_PARALLELISM=false
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+For convenience, you can use this one-liner:
+
+```bash
+cd backend && export GROQ_API_KEY=your_groq_api_key_here && export TOKENIZERS_PARALLELISM=false && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 2. Start the Frontend (Development)
@@ -121,17 +125,28 @@ LLM_MODEL=llama3-8b-8192
 
 1. **ModuleNotFoundError: No module named 'app'**
    - Make sure you're running the server from the `backend/` directory
-   - Use the provided `start_server.sh` script
+   - Use the provided command with the correct working directory
 
-2. **Tokenizer Warnings**
+2. **'Config' object has no attribute 'CHUNK_SIZE' or 'UPLOAD_PATH'**
+   - This is a configuration issue. Add the following lines to your `backend/app/config.py` file in the `Config` class:
+   ```python
+   CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
+   UPLOAD_PATH: str = os.getenv("UPLOAD_PATH", str(BASE_DIR / "data" / "uploads"))
+   ```
+   
+3. **GROQ_API_KEY environment variable is required**
+   - Make sure to set the GROQ API key as shown in the Quick Start section
+   - Verify the key is correctly set with: `echo $GROQ_API_KEY`
+
+4. **Tokenizer Warnings**
    - Set `export TOKENIZERS_PARALLELISM=false`
-   - This is handled automatically in the startup script
+   - This is handled automatically in the startup commands
 
-3. **Server Won't Start**
+5. **Server Won't Start**
    - Check if port 8000 is available: `lsof -i :8000`
    - Kill existing processes: `pkill -f uvicorn`
 
-4. **Frontend Build Issues**
+6. **Frontend Build Issues**
    - Delete `node_modules` and `package-lock.json`
    - Run `npm install` again
 

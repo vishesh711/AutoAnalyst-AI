@@ -10,7 +10,7 @@ const StatsPanel: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/health')
+      const response = await fetch('http://localhost:8000/api/health')
       const data = await response.json()
       setStats(data)
     } catch (error) {
@@ -140,7 +140,7 @@ const StatsPanel: React.FC = () => {
             </button>
             
             <a 
-              href="/api/health" 
+              href="http://localhost:8000/api/health" 
               target="_blank" 
               rel="noopener noreferrer"
               className="bg-neutral-600 dark:bg-dark-600 hover:bg-neutral-700 dark:hover:bg-dark-500 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 text-center transform hover:scale-105 shadow-lg dark:shadow-dark-lg"
@@ -149,7 +149,7 @@ const StatsPanel: React.FC = () => {
             </a>
             
             <a 
-              href="/api/docs" 
+              href="http://localhost:8000/docs" 
               target="_blank" 
               rel="noopener noreferrer"
               className="bg-accent-600 hover:bg-accent-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 text-center transform hover:scale-105 shadow-lg dark:shadow-dark-lg"
