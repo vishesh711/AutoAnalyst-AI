@@ -1,0 +1,17 @@
+{
+  "name": "autoanalyst-ai",
+  "version": "1.0.0",
+  "description": "AI-powered research and data analysis platform",
+  "scripts": {
+    "frontend": "cd frontend && npm run dev",
+    "backend": "./start-backend.sh",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "install:all": "cd frontend && npm install && cd ../backend && pip install -r requirements.txt",
+    "start": "./start.sh"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 

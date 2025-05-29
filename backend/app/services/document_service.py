@@ -32,7 +32,7 @@ class DocumentService:
             logger.error(f"Error initializing document service: {str(e)}")
             raise
     
-    async def process_document(self, file_path: str) -> Dict[str, Any]:
+    async def process_document(self, file_path: str, filename: str = None) -> Dict[str, Any]:
         """Process an uploaded document and add it to the vector store"""
         try:
             if not self.rag_tool:
@@ -42,17 +42,21 @@ class DocumentService:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"File not found: {file_path}")
             
+            # Use provided filename or extract from path
+            actual_filename = filename or os.path.basename(file_path)
+            
             # Add document to RAG tool
             result = await self.rag_tool.add_document(file_path)
             
-            logger.info(f"Processed document: {os.path.basename(file_path)}")
+            logger.info(f"Processed document: {actual_filename}")
             
             return {
                 "status": "success",
                 "message": f"Document processed successfully",
-                "filename": os.path.basename(file_path),
+                "filename": actual_filename,
                 "chunks_added": result.get("chunks_added", 0),
-                "processed_at": datetime.now().isoformat()
+                "processed_at": datetime.now().isoformat(),
+                "id": result.get("id", str(datetime.now().timestamp()))
             }
             
         except Exception as e:

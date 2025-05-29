@@ -1,0 +1,50 @@
+# AutoAnalyst AI GROQ API Configuration
+
+Copy and paste the following commands to set up your environment:
+
+```bash
+# Create the .env file
+cd backend
+cp env_example.txt .env
+
+# Update the GROQ API key and port
+sed -i '' 's/your_groq_api_key_here/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/g' .env
+sed -i '' 's/API_PORT=8000/API_PORT=8001/g' .env
+
+# Add tokenizer settings
+echo "TOKENIZERS_PARALLELISM=false" >> .env
+
+# Make sure needed directories exist
+mkdir -p data/uploads
+mkdir -p data/vector_db
+mkdir -p temp/charts
+mkdir -p db
+```
+
+Or manually create the .env file in the backend directory with the following content:
+
+```
+GROQ_API_KEY=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
+LLM_MODEL=llama3-8b-8192
+LLM_TEMPERATURE=0.1
+LLM_MAX_TOKENS=4000
+DATABASE_URL=sqlite:///./db/analytics.db
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DIMENSION=384
+VECTOR_DB_PATH=./data/vector_db
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+MAX_FILE_SIZE=10485760
+UPLOAD_TEMP_DIR=/tmp
+UPLOAD_PATH=./data/uploads
+API_HOST=0.0.0.0
+API_PORT=8001
+API_RELOAD=True
+AGENT_MAX_ITERATIONS=10
+AGENT_TIMEOUT=300
+CHART_OUTPUT_DIR=./temp/charts
+CHART_DPI=300
+LOG_LEVEL=INFO
+SECRET_KEY=autoanalyst-ai-secret-key-change-in-production
+TOKENIZERS_PARALLELISM=false
+``` 

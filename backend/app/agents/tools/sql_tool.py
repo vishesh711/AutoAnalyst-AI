@@ -425,181 +425,284 @@ Provide a business-focused analysis that:
             return f"Analysis completed. {data_summary}"
     
     async def _generate_charts(self, query: str, data: List[Dict]) -> List[Dict[str, Any]]:
-        """Generate appropriate charts based on data"""
-        charts = []
-        
+        """Generate charts based on query and data"""
         try:
-            if not data or len(data) == 0:
-                return charts
+            if not data or len(data) < 2:
+                return []
             
+            # Convert to pandas DataFrame
             df = pd.DataFrame(data)
             
-            # Determine chart type based on data structure
-            numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-            string_cols = df.select_dtypes(include=['object']).columns.tolist()
+            # Create output directory if it doesn't exist
+            os.makedirs(config.CHART_OUTPUT_DIR, exist_ok=True)
             
-            # Create chart output directory
-            chart_dir = config.CHART_OUTPUT_DIR
-            os.makedirs(chart_dir, exist_ok=True)
+            charts = []
             
-            # Generate different types of charts based on data
-            if len(numeric_cols) >= 1 and len(string_cols) >= 1:
-                # Bar chart for categorical vs numeric data
-                chart_path = await self._create_bar_chart(df, string_cols[0], numeric_cols[0], chart_dir)
-                if chart_path:
-                    charts.append({
-                        "type": "bar",
-                        "title": f"{numeric_cols[0]} by {string_cols[0]}",
-                        "image_url": chart_path
-                    })
+            # Determine chart types based on data and query
+            chart_types = self._determine_chart_types(query, df)
             
-            if len(numeric_cols) >= 2:
-                # Scatter plot for numeric vs numeric
-                chart_path = await self._create_scatter_plot(df, numeric_cols[0], numeric_cols[1], chart_dir)
-                if chart_path:
-                    charts.append({
-                        "type": "scatter",
-                        "title": f"{numeric_cols[1]} vs {numeric_cols[0]}",
-                        "image_url": chart_path
-                    })
-            
-            # Time series chart if date column exists
-            date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
-            if date_cols and numeric_cols:
-                chart_path = await self._create_time_series(df, date_cols[0], numeric_cols[0], chart_dir)
-                if chart_path:
-                    charts.append({
-                        "type": "line",
-                        "title": f"{numeric_cols[0]} over time",
-                        "image_url": chart_path
-                    })
-            
-            # Pie chart for categorical distribution
-            if string_cols and len(df) <= 20:  # Only for smaller datasets
-                chart_path = await self._create_pie_chart(df, string_cols[0], chart_dir)
-                if chart_path:
-                    charts.append({
-                        "type": "pie",
-                        "title": f"Distribution by {string_cols[0]}",
-                        "image_url": chart_path
-                    })
+            for chart_type, columns in chart_types:
+                try:
+                    chart_path = None
                     
+                    if chart_type == "bar" and len(columns) >= 2:
+                        chart_path = await self._create_bar_chart(df, columns[0], columns[1], config.CHART_OUTPUT_DIR)
+                    
+                    elif chart_type == "line" and len(columns) >= 2:
+                        chart_path = await self._create_time_series(df, columns[0], columns[1], config.CHART_OUTPUT_DIR)
+                    
+                    elif chart_type == "pie" and len(columns) >= 1:
+                        chart_path = await self._create_pie_chart(df, columns[0], config.CHART_OUTPUT_DIR)
+                    
+                    elif chart_type == "scatter" and len(columns) >= 2:
+                        chart_path = await self._create_scatter_plot(df, columns[0], columns[1], config.CHART_OUTPUT_DIR)
+                    
+                    if chart_path:
+                        # Convert the chart to base64 for frontend display
+                        with open(chart_path, "rb") as image_file:
+                            base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+                        
+                        charts.append({
+                            "type": chart_type,
+                            "title": f"{chart_type.title()} Chart: {columns[0]} vs {columns[1]}" if len(columns) > 1 else f"{chart_type.title()} Chart: {columns[0]}",
+                            "image_path": chart_path,
+                            "base64": base64_image
+                        })
+                
+                except Exception as e:
+                    logger.error(f"Error creating {chart_type} chart: {str(e)}")
+            
+            return charts
+            
         except Exception as e:
             logger.error(f"Error generating charts: {str(e)}")
-        
-        return charts
+            return []
     
     async def _create_bar_chart(self, df: pd.DataFrame, x_col: str, y_col: str, output_dir: str) -> Optional[str]:
         """Create a bar chart"""
         try:
-            plt.figure(figsize=config.CHART_FIGSIZE)
+            # Set style
+            plt.style.use('seaborn-v0_8-darkgrid')
             
-            # Aggregate data if necessary
-            if len(df) > 20:
-                df_agg = df.groupby(x_col)[y_col].sum().reset_index().head(20)
-            else:
-                df_agg = df.copy()
+            # Create figure
+            fig, ax = plt.subplots(figsize=config.CHART_FIGSIZE)
             
-            plt.bar(df_agg[x_col], df_agg[y_col])
-            plt.title(f"{y_col} by {x_col}")
-            plt.xlabel(x_col)
-            plt.ylabel(y_col)
-            plt.xticks(rotation=45, ha='right')
+            # Create bar chart
+            sns.barplot(data=df, x=x_col, y=y_col, ax=ax, palette='viridis')
+            
+            # Customize appearance
+            ax.set_title(f'{y_col} by {x_col}', fontsize=16, pad=20)
+            ax.set_xlabel(x_col, fontsize=12, labelpad=10)
+            ax.set_ylabel(y_col, fontsize=12, labelpad=10)
+            
+            # Rotate x labels if there are many categories
+            if len(df[x_col].unique()) > 5:
+                plt.xticks(rotation=45, ha='right')
+            
+            # Tight layout
             plt.tight_layout()
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Save chart
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"bar_chart_{timestamp}.png"
             filepath = os.path.join(output_dir, filename)
-            
-            plt.savefig(filepath, dpi=config.CHART_DPI, bbox_inches='tight')
+            plt.savefig(filepath, dpi=config.CHART_DPI)
             plt.close()
             
-            return f"/api/charts/{filename}"
+            return filepath
             
         except Exception as e:
             logger.error(f"Error creating bar chart: {str(e)}")
+            plt.close()
             return None
     
     async def _create_scatter_plot(self, df: pd.DataFrame, x_col: str, y_col: str, output_dir: str) -> Optional[str]:
         """Create a scatter plot"""
         try:
-            plt.figure(figsize=config.CHART_FIGSIZE)
+            # Set style
+            plt.style.use('seaborn-v0_8-darkgrid')
             
-            plt.scatter(df[x_col], df[y_col], alpha=0.7)
-            plt.title(f"{y_col} vs {x_col}")
-            plt.xlabel(x_col)
-            plt.ylabel(y_col)
+            # Create figure
+            fig, ax = plt.subplots(figsize=config.CHART_FIGSIZE)
+            
+            # Create scatter plot
+            sns.scatterplot(data=df, x=x_col, y=y_col, ax=ax, alpha=0.7)
+            
+            # Add trend line
+            sns.regplot(data=df, x=x_col, y=y_col, scatter=False, ax=ax, line_kws={"color": "red"})
+            
+            # Customize appearance
+            ax.set_title(f'{y_col} vs {x_col}', fontsize=16, pad=20)
+            ax.set_xlabel(x_col, fontsize=12, labelpad=10)
+            ax.set_ylabel(y_col, fontsize=12, labelpad=10)
+            
+            # Tight layout
             plt.tight_layout()
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"scatter_{timestamp}.png"
+            # Save chart
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"scatter_plot_{timestamp}.png"
             filepath = os.path.join(output_dir, filename)
-            
-            plt.savefig(filepath, dpi=config.CHART_DPI, bbox_inches='tight')
+            plt.savefig(filepath, dpi=config.CHART_DPI)
             plt.close()
             
-            return f"/api/charts/{filename}"
+            return filepath
             
         except Exception as e:
             logger.error(f"Error creating scatter plot: {str(e)}")
+            plt.close()
             return None
     
     async def _create_time_series(self, df: pd.DataFrame, date_col: str, value_col: str, output_dir: str) -> Optional[str]:
         """Create a time series chart"""
         try:
-            plt.figure(figsize=config.CHART_FIGSIZE)
+            # Set style
+            plt.style.use('seaborn-v0_8-darkgrid')
             
-            # Convert date column
-            df[date_col] = pd.to_datetime(df[date_col])
-            df_sorted = df.sort_values(date_col)
+            # Create figure
+            fig, ax = plt.subplots(figsize=config.CHART_FIGSIZE)
             
-            # Aggregate by date if multiple entries
-            df_agg = df_sorted.groupby(date_col)[value_col].sum().reset_index()
+            # Convert date column to datetime if it's not already
+            if not pd.api.types.is_datetime64_any_dtype(df[date_col]):
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
             
-            plt.plot(df_agg[date_col], df_agg[value_col], marker='o')
-            plt.title(f"{value_col} over time")
-            plt.xlabel("Date")
-            plt.ylabel(value_col)
-            plt.xticks(rotation=45)
+            # Sort by date
+            df = df.sort_values(by=date_col)
+            
+            # Plot time series
+            sns.lineplot(data=df, x=date_col, y=value_col, marker='o', ax=ax)
+            
+            # Format x-axis dates
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            plt.xticks(rotation=45, ha='right')
+            
+            # Customize appearance
+            ax.set_title(f'{value_col} Over Time', fontsize=16, pad=20)
+            ax.set_xlabel('Date', fontsize=12, labelpad=10)
+            ax.set_ylabel(value_col, fontsize=12, labelpad=10)
+            
+            # Add grid
+            ax.grid(True, linestyle='--', alpha=0.7)
+            
+            # Tight layout
             plt.tight_layout()
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"timeseries_{timestamp}.png"
+            # Save chart
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"time_series_{timestamp}.png"
             filepath = os.path.join(output_dir, filename)
-            
-            plt.savefig(filepath, dpi=config.CHART_DPI, bbox_inches='tight')
+            plt.savefig(filepath, dpi=config.CHART_DPI)
             plt.close()
             
-            return f"/api/charts/{filename}"
+            return filepath
             
         except Exception as e:
-            logger.error(f"Error creating time series: {str(e)}")
+            logger.error(f"Error creating time series chart: {str(e)}")
+            plt.close()
             return None
     
     async def _create_pie_chart(self, df: pd.DataFrame, category_col: str, output_dir: str) -> Optional[str]:
         """Create a pie chart"""
         try:
-            plt.figure(figsize=config.CHART_FIGSIZE)
+            # Set style
+            plt.style.use('seaborn-v0_8-pastel')
             
-            # Count occurrences
-            value_counts = df[category_col].value_counts().head(10)
+            # Create figure
+            fig, ax = plt.subplots(figsize=config.CHART_FIGSIZE)
             
-            plt.pie(value_counts.values, labels=value_counts.index, autopct='%1.1f%%')
-            plt.title(f"Distribution by {category_col}")
-            plt.axis('equal')
+            # Get value counts for category column
+            counts = df[category_col].value_counts()
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"pie_{timestamp}.png"
+            # If too many categories, group smaller ones into "Other"
+            if len(counts) > 8:
+                top_counts = counts.head(7)
+                other_count = counts[7:].sum()
+                counts = pd.concat([top_counts, pd.Series({"Other": other_count})])
+            
+            # Create pie chart
+            wedges, texts, autotexts = ax.pie(
+                counts, 
+                labels=counts.index, 
+                autopct='%1.1f%%',
+                startangle=90,
+                shadow=False,
+                textprops={'fontsize': 10}
+            )
+            
+            # Equal aspect ratio ensures that pie is drawn as a circle
+            ax.axis('equal')
+            
+            # Add title
+            plt.title(f'Distribution by {category_col}', fontsize=16, pad=20)
+            
+            # Add legend
+            plt.legend(wedges, counts.index, title=category_col, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+            
+            # Tight layout
+            plt.tight_layout()
+            
+            # Save chart
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"pie_chart_{timestamp}.png"
             filepath = os.path.join(output_dir, filename)
-            
             plt.savefig(filepath, dpi=config.CHART_DPI, bbox_inches='tight')
             plt.close()
             
-            return f"/api/charts/{filename}"
+            return filepath
             
         except Exception as e:
             logger.error(f"Error creating pie chart: {str(e)}")
+            plt.close()
             return None
+    
+    def _determine_chart_types(self, query: str, df: pd.DataFrame) -> List[tuple]:
+        """Determine appropriate chart types and columns based on data and query"""
+        chart_types = []
+        
+        # Identify column types
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        string_cols = df.select_dtypes(include=['object', 'string']).columns.tolist()
+        date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
+        
+        # Match query keywords to chart types
+        query_lower = query.lower()
+        
+        # Check for explicit chart requests
+        if 'bar chart' in query_lower or 'barchart' in query_lower:
+            if string_cols and numeric_cols:
+                chart_types.append(('bar', [string_cols[0], numeric_cols[0]]))
+                
+        elif 'pie chart' in query_lower or 'piechart' in query_lower:
+            if string_cols:
+                chart_types.append(('pie', [string_cols[0]]))
+                
+        elif 'line chart' in query_lower or 'linechart' in query_lower or 'trend' in query_lower:
+            if date_cols and numeric_cols:
+                chart_types.append(('line', [date_cols[0], numeric_cols[0]]))
+                
+        elif 'scatter plot' in query_lower or 'scatterplot' in query_lower:
+            if len(numeric_cols) >= 2:
+                chart_types.append(('scatter', [numeric_cols[0], numeric_cols[1]]))
+        
+        # If no explicit chart type mentioned, suggest based on data
+        if not chart_types:
+            # For time series data
+            if date_cols and numeric_cols:
+                chart_types.append(('line', [date_cols[0], numeric_cols[0]]))
+            
+            # For categorical vs numeric data
+            if string_cols and numeric_cols:
+                chart_types.append(('bar', [string_cols[0], numeric_cols[0]]))
+            
+            # For distributions of categorical data
+            if string_cols and len(df) <= 20:
+                chart_types.append(('pie', [string_cols[0]]))
+            
+            # For numeric vs numeric data
+            if len(numeric_cols) >= 2:
+                chart_types.append(('scatter', [numeric_cols[0], numeric_cols[1]]))
+        
+        return chart_types
     
     async def health_check(self) -> Dict[str, Any]:
         """Check health of the SQL tool"""

@@ -96,26 +96,27 @@ class RAGTool(BaseTool):
     
     async def _create_empty_vectorstore(self):
         """Create an empty vector store"""
-        # Create a dummy document to initialize FAISS
-        dummy_doc = Document(
-            page_content="This is a placeholder document for initialization.",
-            metadata={"source": "system", "type": "placeholder"}
-        )
-        
-        texts = [dummy_doc.page_content]
-        metadatas = [dummy_doc.metadata]
-        
-        vectorstore = FAISS.from_texts(
-            texts=texts,
-            embedding=self.embeddings,
-            metadatas=metadatas
-        )
-        object.__setattr__(self, 'vectorstore', vectorstore)
-        
-        # Save the empty vector store
-        await self._save_vectorstore()
-        
-        logger.info("Created new empty vector store")
+        try:
+            # Create FAISS index without dummy document
+            from langchain_community.vectorstores.faiss import dependable_faiss_import
+            faiss = dependable_faiss_import()
+            
+            # Initialize empty index with correct dimensions
+            dimension = self.settings.EMBEDDING_DIMENSION
+            index = faiss.IndexFlatL2(dimension)
+            
+            # Create empty vectorstore
+            vectorstore = FAISS(self.embeddings, index, {}, {}, {})
+            object.__setattr__(self, 'vectorstore', vectorstore)
+            
+            # Save the empty vector store
+            await self._save_vectorstore()
+            
+            logger.info("Created new empty vector store")
+            
+        except Exception as e:
+            logger.error(f"Error creating empty vector store: {str(e)}")
+            raise
     
     async def _save_vectorstore(self):
         """Save vector store and metadata"""
@@ -227,12 +228,12 @@ class RAGTool(BaseTool):
         try:
             if not self.vectorstore:
                 return {
-                    "answer": "No documents have been uploaded yet. Please upload some documents first.",
+                    "answer": "The document search system is not initialized yet. Please try again in a moment.",
                     "sources": [],
                     "query": query
                 }
             
-            # Check if only dummy document exists
+            # Check if any documents have been uploaded
             if len(self.document_metadata) == 0:
                 return {
                     "answer": "No documents have been uploaded yet. Please upload some documents first.",
@@ -240,54 +241,60 @@ class RAGTool(BaseTool):
                     "query": query
                 }
             
-            # Perform similarity search
-            docs = self.vectorstore.similarity_search_with_score(
-                query,
-                k=self.settings.TOP_K_DOCUMENTS
-            )
-            
-            # Filter by similarity threshold
-            relevant_docs = [
-                (doc, score) for doc, score in docs 
-                if score >= self.settings.SIMILARITY_THRESHOLD
-            ]
-            
-            if not relevant_docs:
+            # Check if vectorstore has any vectors
+            if self.vectorstore.index.ntotal == 0:
                 return {
-                    "answer": f"I couldn't find relevant information about '{query}' in the uploaded documents.",
+                    "answer": "The document database is empty. Please upload some documents first.",
                     "sources": [],
                     "query": query
                 }
             
+            # Perform similarity search
+            docs = self.vectorstore.similarity_search_with_score(
+                query,
+                k=5  # Use a default if TOP_K_DOCUMENTS not in settings
+            )
+            
+            # Filter by similarity threshold
+            relevant_docs = []
+            for doc, score in docs:
+                # Convert score to similarity (FAISS returns distance, lower is better)
+                similarity = 1.0 / (1.0 + score)
+                if similarity > 0.7:  # Threshold for relevance
+                    relevant_docs.append((doc, similarity))
+            
+            if not relevant_docs:
+                return {
+                    "answer": "I couldn't find any relevant information in the uploaded documents. Please try rephrasing your question or upload more relevant documents.",
+                    "sources": [],
+                    "query": query
+                }
+                
+            # Format context from relevant documents
+            context = "\n\n".join([f"Document: {doc.metadata.get('source', 'Unknown')}\nContent: {doc.page_content}" for doc, _ in relevant_docs])
+            
+            # Generate answer
+            answer = await self._generate_answer(query, context)
+            
             # Format sources
             sources = []
-            context_chunks = []
-            
-            for doc, score in relevant_docs:
-                source_info = {
-                    "content": doc.page_content,
-                    "source": doc.metadata.get("source", "Unknown"),
-                    "score": float(score),
-                    "chunk_index": doc.metadata.get("chunk_index", 0)
-                }
-                sources.append(source_info)
-                context_chunks.append(doc.page_content)
-            
-            # Generate answer based on retrieved context
-            context = "\n\n".join(context_chunks)
-            answer = await self._generate_answer(query, context)
+            for doc, similarity in relevant_docs:
+                sources.append({
+                    "filename": doc.metadata.get("source", "Unknown"),
+                    "similarity": round(similarity * 100, 2),
+                    "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                })
             
             return {
                 "answer": answer,
                 "sources": sources,
-                "query": query,
-                "context_used": True
+                "query": query
             }
             
         except Exception as e:
             logger.error(f"Error in RAG search: {str(e)}")
             return {
-                "answer": f"An error occurred while searching: {str(e)}",
+                "answer": f"I encountered an error while searching through documents: {str(e)}. Please try again later.",
                 "sources": [],
                 "query": query
             }

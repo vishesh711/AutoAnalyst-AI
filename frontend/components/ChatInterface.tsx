@@ -131,6 +131,29 @@ export default function ChatInterface({ messages, isLoading, onSendMessage, onEx
     }
   }
 
+  const renderChart = (chart: any) => {
+    return (
+      <div className="mt-4 mb-4 bg-white dark:bg-slate-800 rounded-lg p-4 shadow-md">
+        <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-2">
+          {chart.title}
+        </h3>
+        <div className="flex justify-center">
+          {chart.base64 ? (
+            <img 
+              src={`data:image/png;base64,${chart.base64}`} 
+              alt={chart.title} 
+              className="max-w-full rounded shadow-lg"
+            />
+          ) : (
+            <div className="text-center p-4 bg-slate-100 dark:bg-slate-700 rounded-lg">
+              <p className="text-slate-600 dark:text-slate-400">Chart image unavailable</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)] bg-white/80 dark:bg-dark-800/95 backdrop-blur-sm rounded-2xl shadow-xl dark:shadow-dark-xl border border-neutral-200 dark:border-dark-700 overflow-hidden transition-colors duration-300">
       {/* Enhanced Header */}
@@ -268,13 +291,7 @@ export default function ChatInterface({ messages, isLoading, onSendMessage, onEx
                         {message.charts.map((chart, idx) => (
                           <div key={idx} className="bg-white dark:bg-dark-800 rounded-lg p-4 border border-secondary-200 dark:border-secondary-700/30 transition-colors duration-300">
                             <h5 className="font-medium text-neutral-800 dark:text-dark-200 mb-2 transition-colors duration-300">{chart.title}</h5>
-                            {chart.image_url && (
-                              <img 
-                                src={chart.image_url} 
-                                alt={chart.title}
-                                className="w-full h-auto rounded-lg border border-neutral-200 dark:border-dark-600 transition-colors duration-300"
-                              />
-                            )}
+                            {renderChart(chart)}
                           </div>
                         ))}
                       </div>

@@ -8,10 +8,15 @@ from typing import List, Dict, Any
 import json
 import tempfile
 import shutil
+import logging
 
 from .agents.planner import QueryPlanner
 from .services.document_service import DocumentService
 from .services.export_service import ExportService
+from .config import config
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -25,7 +30,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -160,10 +165,11 @@ async def upload_document(file: UploadFile = File(...)):
 async def list_documents():
     """Get list of uploaded documents"""
     try:
-        documents = document_service.list_documents()
+        documents = await document_service.list_documents()
         return {"documents": documents}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+        logger.error(f"Error listing documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/documents/{document_id}")
 async def delete_document(document_id: str):
@@ -203,7 +209,7 @@ async def get_system_stats():
     """Get system statistics"""
     try:
         stats = {
-            "documents": document_service.get_stats(),
+            "documents": await document_service.get_upload_stats(),
             "system": {
                 "status": "healthy",
                 "version": "1.0.0"
@@ -216,7 +222,7 @@ async def get_system_stats():
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
+        host=config.API_HOST,
+        port=config.API_PORT,
+        reload=config.API_RELOAD
     ) 
